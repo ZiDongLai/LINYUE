@@ -4,6 +4,16 @@ Windows 与 Android 间的局域网与经典蓝牙通信工具，使用 Flutter�
 
 当前冻结交付版本：**v0.5.65 DEV13D2E38 / 0.5.65+49（Debug）**。已收到用户对 Windows ↔ 华为 Mate 60 Pro 现有功能验收通过的反馈。源码上传与公开正式版发布是不同步骤；本仓库不将 Debug 构建称为公开 Release 成品。
 
+## 下载
+
+[v0.5.65 Debug 预发布与安装说明](https://github.com/ZiDongLai/LINYUE/releases/tag/v0.5.65-debug)
+
+- [Windows 完整运行 ZIP](https://github.com/ZiDongLai/LINYUE/releases/download/v0.5.65-debug/windows_v0.5.65_DEV13D2E38_stability_debug.zip)：完整解压后运行，勿只复制EXE。
+- [Android APK](https://github.com/ZiDongLai/LINYUE/releases/download/v0.5.65-debug/android_v0.5.65_DEV13D2E38_stability_debug.apk)：保留数据更新；若签名或版本不兼容，停止，不卸载清数据。
+- [SHA-256 校验文件](https://github.com/ZiDongLai/LINYUE/releases/download/v0.5.65-debug/SHA256SUMS.txt)。
+
+附件为原已验收的Debug包，未重新构建；该GitHub Release标为 **Pre-release**，不是新的生产Release构建。
+
 ## 现有功能
 
 - 首页统一连接、文字输入和“＋”文件入口，使用当前明确选择的LAN或蓝牙通道。
