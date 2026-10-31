@@ -1,0 +1,19 @@
+{
+  "recordedAt": "2026-10-31T11:01:21.029653+08:00",
+  "version": "0.5.65+49",
+  "developmentLabel": "DEV13D2E38",
+  "buildType": "Debug",
+  "userStatementVerbatim": "测试通过，继续下一步。",
+  "acceptanceBasis": "User reports completion of the immediately preceding existing-features acceptance candidate",
+  "scope": "Windows PC <-> Huawei Mate 60 Pro existing features",
+  "overallResult": "PASS_USER_REPORTED",
+  "perCaseMeasurementsOrNewDeviceLogsProvided": false,
+  "unreportedPerCaseDetails": "Not independently observed or backfilled; no invented times, hashes of received files or memory measurements",
+  "androidToAndroidLan": "PENDING_NO_SECOND_PHONE; excluded from accepted scope",
+  "androidToAndroidBluetooth": "NOT_REQUESTED_NOT_DEVELOPED",
+  "bluetoothResume": "PAUSED_NOT_DELIVERED",
+  "freezeDecision": "Accepted existing-features Debug delivery frozen; development closeout complete for stated scope",
+  "publicRelease": false,
+  "newTestsOrBuildsThisTurn": false,
+  "deviceOperationsThisTurn": false
+}
