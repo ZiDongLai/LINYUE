@@ -1,0 +1,43 @@
+# Flutter and generated build output
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+**/ephemeral/
+android/.gradle/
+android/.kotlin/
+android/local.properties
+# Local IDE and operating-system files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+# Credentials and signing material
+.env
+.env.*
+!.env.example
+key.properties
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+# Runtime data, diagnostics, historical archives and distributable packages
+audit/
+artifacts/
+*.log
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.apk
+*.aab
+*.zip
+*.dmp
+*.hprof
