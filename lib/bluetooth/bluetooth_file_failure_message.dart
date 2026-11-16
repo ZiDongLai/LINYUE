@@ -33,5 +33,5 @@ String bluetoothFileFailureMessage(Object error) {
       text.contains('会话')) {
     return '蓝牙连接已中断或会话失效，请重新连接后发送。';
   }
-  return '文件未确认保存成功，请检查接收设备并重新发送；详细原因见测试与诊断。';
+  return '文件未确认保存成功，请检查接收设备并重新发送；详细原因见连接诊断。';
 }

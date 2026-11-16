@@ -7,15 +7,17 @@ void main() {
   final mainSource = File('lib/main.dart').readAsStringSync();
 
   test('direct retry button bypasses the nested three-dot popup', () {
-    expect(mainSource, contains("child: const Text('重新认证'"));
-    expect(mainSource, contains("_DeviceManagerSelection(action: 'reconnect',"));
+    expect(mainSource, contains("'重新认证'"));
+    expect(mainSource, contains('_DeviceManagerSelection('));
+    expect(mainSource, contains("action: 'reconnect',"));
     expect(mainSource, contains('onPressed: () => Navigator.of(dialogContext).pop('));
   });
 
   test('three-dot actions defer until popup route is dismissed', () {
     expect(mainSource, contains('WidgetsBinding.instance.addPostFrameCallback((_) {'));
     expect(mainSource, contains('if (!dialogContext.mounted) return;'));
-    expect(mainSource, contains('_DeviceManagerSelection(action: action,'));
+    expect(mainSource, contains('_DeviceManagerSelection('));
+    expect(mainSource, contains('action: action,'));
   });
 
   test('all retry paths call the existing signed identity handshake', () {

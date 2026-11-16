@@ -39,7 +39,7 @@ class DeviceConnectionBar extends StatelessWidget {
       final capability = useBluetooth && c.authenticated
           ? (c.transport.textReady
                 ? (c.transport.fileSendReady
-                      ? '文字可用 · 可发送文件≤${c.transport.maxFileBytes ~/ (1024*1024)} MiB'
+                      ? '文字可用 · 可发送文件≤${c.transport.maxFileBytes ~/ (1024 * 1024)} MiB'
                       : '文字可用 · 文件发送未就绪')
                 : '文字通道准备中')
           : '';
@@ -111,7 +111,7 @@ class DeviceConnectionBar extends StatelessWidget {
                   showSelectedIcon: false,
                   segments: const [
                     ButtonSegment(value: false, label: Text('局域网')),
-                    ButtonSegment(value: true, label: Text('蓝牙 · 测试版')),
+                    ButtonSegment(value: true, label: Text('蓝牙')),
                   ],
                   selected: {useBluetooth},
                   onSelectionChanged: routeLocked || onRouteChanged == null
@@ -233,7 +233,7 @@ class _DeviceConnectionSheetState extends State<DeviceConnectionSheet>
                     ),
                   Expanded(
                     child: Text(
-                      bluetooth ? '蓝牙连接 · 测试版' : '连接设备',
+                      bluetooth ? '蓝牙连接' : '连接设备',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -270,13 +270,11 @@ class _DeviceConnectionSheetState extends State<DeviceConnectionSheet>
                                 key: const Key('bluetooth-connection-option'),
                                 contentPadding: EdgeInsets.zero,
                                 leading: const Icon(Icons.bluetooth),
-                                title: Text(
-                                  c.android ? '蓝牙 · 等待电脑连接' : '蓝牙连接 · 测试版',
-                                ),
+                                title: Text(c.android ? '蓝牙 · 等待电脑连接' : '蓝牙连接'),
                                 subtitle: Text(
                                   c.transport.textEnabled
                                       ? '连接后可在首页发送文字；文件以双方能力为准'
-                                      : '连接与身份验证测试',
+                                      : '设备连接与身份验证',
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: _bluetooth,
@@ -415,7 +413,7 @@ class _DeviceConnectionSheetState extends State<DeviceConnectionSheet>
           Text(
             c.android
                 ? '找不到手机？先在两端系统蓝牙设置中配对，再返回邻跃。等待连接不会让手机自动进入系统可发现状态。'
-                : '这里只显示已配对设备。找不到手机？先在 Windows 蓝牙设置中配对，再返回刷新。',
+                : '搜索结果包含附近设备和已配对设备。连接前需先完成系统配对。',
             style: const TextStyle(fontSize: 12),
           ),
           Wrap(
@@ -490,19 +488,34 @@ class _DeviceConnectionSheetState extends State<DeviceConnectionSheet>
                 overflow: TextOverflow.ellipsis,
               ),
               subtitle: Text(
-                d.phone
+                !d.paired
+                    ? '附近设备 · 请先在 Windows 蓝牙设置中配对'
+                    : d.phone
                     ? '已配对 · 点击连接'
-                    : '已配对 · 类型未确认，连接前会检查邻跃服务',
+                    : '已配对 · 连接前会检查邻跃服务',
                 style: const TextStyle(fontSize: 11),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 _identityCode.clear();
-                unawaited(c.connectDevice(d.id));
+                if (d.paired) {
+                  unawaited(c.connectDevice(d.id));
+                } else {
+                  unawaited(c.openBluetoothSettings());
+                }
               },
             ),
+          if (!c.android)
+            FilledButton.icon(
+              key: const Key('bluetooth-wait-for-computer'),
+              onPressed: c.busy || c.active
+                  ? null
+                  : () => unawaited(c.waitForConnection()),
+              icon: const Icon(Icons.bluetooth_searching),
+              label: const Text('等待另一台电脑连接'),
+            ),
           const Text(
-            '同名设备请核对地址尾号；手机邻跃需保持等待连接。',
+            '连接前需在系统蓝牙设置中配对。等待端点击“等待另一台电脑连接”，发起端选择对方电脑。',
             style: TextStyle(fontSize: 11),
           ),
         ],
@@ -604,7 +617,7 @@ class _DeviceConnectionSheetState extends State<DeviceConnectionSheet>
         ),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
-          title: const Text('测试与诊断', style: TextStyle(fontSize: 12)),
+          title: const Text('连接诊断', style: TextStyle(fontSize: 12)),
           children: [
             BluetoothDiagnostics(
               transport: c.transport,
@@ -625,7 +638,7 @@ class _DeviceConnectionSheetState extends State<DeviceConnectionSheet>
     BluetoothConnectionPhase.pairingRequired =>
       c.android
           ? '请先在手机与电脑的系统蓝牙设置中完成配对，再回到这里重试。'
-          : '当前没有可尝试的已配对手机。请先在 Windows 蓝牙设置中与手机配对，再刷新。',
+          : '未找到已配对的电脑。请在 Windows 蓝牙设置中让对端可被发现并完成配对，再返回搜索。',
     BluetoothConnectionPhase.identityRequired =>
       '系统蓝牙配对不等于邻跃身份认证。请先使用已有身份管理完成可信登记，再重试。',
     BluetoothConnectionPhase.chooseIdentity =>
@@ -633,23 +646,28 @@ class _DeviceConnectionSheetState extends State<DeviceConnectionSheet>
     BluetoothConnectionPhase.chooseDevice =>
       c.android
           ? '请选择要等待的电脑。首次无法关联时需核对电脑当前身份码。'
-          : '请先让手机显示“等待电脑连接”，再选择名称与地址尾号对应的手机。',
+          : '列表显示已配对设备及本次搜索发现的设备。Windows 电脑间连接时，接收端先点击“等待另一台电脑连接”。',
+    BluetoothConnectionPhase.scanning =>
+      '正在搜索附近的经典蓝牙设备；搜索结果只用于选择设备，连接仍需系统配对和邻跃身份核验。',
     BluetoothConnectionPhase.waiting =>
-      '手机已准备好。请在电脑的“连接设备 → 蓝牙连接”中选择这台手机。可以返回聊天继续查看状态。',
+      c.android
+          ? '手机已准备好。请在电脑的“连接设备 → 蓝牙连接”中选择这台手机。可以返回聊天继续查看状态。'
+          : '电脑已准备好。请在另一台电脑的“连接设备 → 蓝牙连接”中选择本机。',
     BluetoothConnectionPhase.authenticating =>
       c.transport.textEnabled
           ? (c.transport.confirmationRequired
                 ? '临时蓝牙链路已建立，尚未建立可信会话。请在两端直接比较核对码并分别确认。'
                 : '正在核验对端签名或等待双方确认；认证及文字能力均就绪后才可发送文字。')
-          : '蓝牙链路已建立，正在核验已登记身份。认证完成前不能发送测试消息。',
+          : '蓝牙链路已建立，正在核验已登记身份。认证完成前不能发送消息。',
     BluetoothConnectionPhase.authenticated =>
       c.transport.textEnabled
           ? '已确认${c.peerLabel}的邻跃身份。返回首页即可通信；文件是否可用以首页状态为准。'
-          : '已确认${c.peerLabel}的邻跃身份。可以返回聊天查看状态，或展开测试与诊断验证收发。',
-    BluetoothConnectionPhase.starting => '正在准备接收电脑连接，无需手动设置连接参数。',
-    BluetoothConnectionPhase.connecting => '正在连接手机，成功后将自动验证身份。',
+          : '已确认${c.peerLabel}的邻跃身份。可以返回聊天查看连接状态，或展开连接诊断查看收发状态。',
+    BluetoothConnectionPhase.starting =>
+      c.android ? '正在准备接收电脑连接，无需手动设置连接参数。' : '正在发布本机服务并等待另一台电脑连接。',
+    BluetoothConnectionPhase.connecting => '正在连接所选设备，成功后将验证身份。',
     BluetoothConnectionPhase.checkingService =>
-      '正在检查目标是否提供邻跃服务，尚未建立连接或信任。请保持手机邻跃处于等待状态。',
+      '正在检查目标是否提供邻跃服务，尚未建立连接或信任。请确认对端应用正在等待连接。',
     BluetoothConnectionPhase.cancelled => '已停止本次连接，可重新尝试；身份登记与聊天记录均保留。',
     BluetoothConnectionPhase.disconnected => '连接已断开，可确认对端仍在运行后重试。',
     _ => '保持手机邻跃在前台，确认双方已在系统设置中配对。',

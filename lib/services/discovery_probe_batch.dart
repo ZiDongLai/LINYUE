@@ -11,10 +11,12 @@ final class DiscoveryProbeBatch {
 
   static Future<void> run(
     Iterable<String> targets,
-    Future<void> Function(String ip) probe,
-  ) async {
+    Future<void> Function(String ip) probe, {
+    int concurrency = maxConcurrency,
+  }) async {
     final queue = List<String>.unmodifiable(targets);
     if (queue.isEmpty) return;
+    final workers = concurrency.clamp(1, 128);
     var next = 0;
 
     Future<void> worker() async {
@@ -28,8 +30,8 @@ final class DiscoveryProbeBatch {
       }
     }
 
-    await Future.wait(List.generate(
-      min(maxConcurrency, queue.length), (_) => worker(),
-    ));
+    await Future.wait(
+      List.generate(min(workers, queue.length), (_) => worker()),
+    );
   }
 }

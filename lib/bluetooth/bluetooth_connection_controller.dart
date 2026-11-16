@@ -18,6 +18,7 @@ enum BluetoothConnectionPhase {
   identityRequired,
   chooseIdentity,
   chooseDevice,
+  scanning,
   checkingService,
   starting,
   waiting,
@@ -39,15 +40,16 @@ class BluetoothConnectionController extends ChangeNotifier {
     this.permissionWait = const Duration(seconds: 20),
     this.refreshInterval = const Duration(milliseconds: 350),
     this.serviceWait = const Duration(seconds: 18),
-  }) : bindings = bindings ?? BluetoothPeerBindings(transport.identity) {
+  }) : android = transport.android,
+       bindings = bindings ?? BluetoothPeerBindings(transport.identity) {
     transport.addListener(_transportChanged);
   }
 
   final BluetoothTransport transport;
+  final bool android;
   final BluetoothPeerBindings bindings;
   final Duration permissionWait, refreshInterval, serviceWait;
   DeviceIdentityManager get identity => transport.identity;
-  bool get android => transport.server;
   BluetoothConnectionPhase phase = BluetoothConnectionPhase.idle;
   List<PairedBluetoothDevice> devices = [];
   String? selectedFingerprint, selectedDeviceId;
@@ -129,7 +131,7 @@ class BluetoothConnectionController extends ChangeNotifier {
       return '设备选择';
     }
     if (text.contains('ack') || text.contains('test not acknowledged')) {
-      return '测试消息确认';
+      return '消息确认';
     }
     return '蓝牙建链或连接';
   }
@@ -153,6 +155,7 @@ class BluetoothConnectionController extends ChangeNotifier {
     BluetoothConnectionPhase.chooseIdentity => '首次连接，请核对对端身份',
     BluetoothConnectionPhase.chooseDevice =>
       android ? '选择要等待的电脑' : '选择已配对的候选设备',
+    BluetoothConnectionPhase.scanning => '正在搜索附近蓝牙设备',
     BluetoothConnectionPhase.checkingService => '正在检查手机邻跃服务',
     BluetoothConnectionPhase.starting => '正在准备蓝牙连接',
     BluetoothConnectionPhase.waiting => '等待电脑连接',
@@ -298,6 +301,24 @@ class BluetoothConnectionController extends ChangeNotifier {
           ? status['localName'] as String
           : '';
       transport.localName = localBluetoothName;
+      if (!android) {
+        await transport.native.invoke<void>('scanDevices');
+        _set(BluetoothConnectionPhase.scanning);
+        final scanClock = Stopwatch()..start();
+        while (_current(op) &&
+            scanClock.elapsed < const Duration(seconds: 15)) {
+          final scan = await transport.native.invoke<Map>('scanStatus');
+          if (!_current(op)) return;
+          transport.captureNativeDiagnostics(scan?['diagnostics']);
+          status = {
+            ...status,
+            'devices': scan?['devices'] ?? status['devices'],
+            'devicesError': scan?['error'] ?? status['devicesError'],
+          };
+          if (scan?['scanning'] != true) break;
+          await Future<void>.delayed(refreshInterval);
+        }
+      }
       final catalog = BluetoothPeerCatalog.fromSnapshot(status['devices']);
       excludedPeripherals = android
           ? 0
@@ -311,7 +332,9 @@ class BluetoothConnectionController extends ChangeNotifier {
       await bindings.load();
       if (!_current(op)) return;
       try {
-        await bindings.retainPaired(devices.map((d) => d.id).toSet());
+        await bindings.retainPaired(
+          devices.where((d) => d.paired).map((d) => d.id).toSet(),
+        );
       } catch (_) {
         associationHint = '已验证设备关联暂不可用，本次仍须核对身份。';
       }
@@ -322,6 +345,10 @@ class BluetoothConnectionController extends ChangeNotifier {
               ? BluetoothConnectionPhase.unavailable
               : BluetoothConnectionPhase.pairingRequired,
         );
+        return;
+      }
+      if (!devices.any((device) => device.paired)) {
+        _set(BluetoothConnectionPhase.chooseDevice);
         return;
       }
       if (!android) {
@@ -343,8 +370,8 @@ class BluetoothConnectionController extends ChangeNotifier {
         }
         return;
       }
-      // Only Android is a server. Windows must select an OS-paired target and
-      // complete probeService before any client connect, even in E30 text mode.
+      // Android waits as the server. Windows can either wait for a paired
+      // computer or select one and query its advertised RFCOMM service.
       if (transport.textEnabled) {
         _preparing = false;
         selectedFingerprint = null;
@@ -402,6 +429,13 @@ class BluetoothConnectionController extends ChangeNotifier {
         transport.active ||
         canonical == null ||
         !devices.any((d) => d.id == canonical)) {
+      return;
+    }
+    if (!android &&
+        !devices.any((device) => device.id == canonical && device.paired)) {
+      errorHint = '请先在 Windows 蓝牙设置中与这台电脑完成配对，再返回刷新设备列表。';
+      _set(BluetoothConnectionPhase.pairingRequired);
+      unawaited(openBluetoothSettings());
       return;
     }
     selectedDeviceId = canonical;
@@ -568,6 +602,7 @@ class BluetoothConnectionController extends ChangeNotifier {
       await transport.start(
         expectedFingerprint: selectedFingerprint ?? '',
         deviceId: selectedDeviceId,
+        serverRole: android,
       );
       if (!_current(op)) return;
       _observedError = '';
@@ -576,6 +611,30 @@ class BluetoothConnectionController extends ChangeNotifier {
     } finally {
       if (_current(op)) {
         _starting = false;
+        if (!_disposed) notifyListeners();
+      }
+    }
+  }
+
+  Future<void> waitForConnection() async {
+    if (android || busy || transport.active) return;
+    final op = ++_operation;
+    _preparing = true;
+    selectedDeviceId = null;
+    selectedFingerprint = null;
+    _serviceReadyFor = null;
+    errorDetail = '';
+    errorHint = '';
+    _set(BluetoothConnectionPhase.starting);
+    try {
+      await transport.start(expectedFingerprint: '', serverRole: true);
+      if (!_current(op)) return;
+      _observedError = '';
+    } catch (e) {
+      if (_current(op)) _failure(e);
+    } finally {
+      if (_current(op)) {
+        _preparing = false;
         if (!_disposed) notifyListeners();
       }
     }
@@ -686,14 +745,14 @@ String friendlyBluetoothError(String raw) {
   }
   if (e.contains('radio_not_found')) return '当前经典蓝牙接口未枚举到适配器，请核对系统适配器及驱动，保留诊断。';
   if (e.contains('association protocol incompatible')) {
-    return '蓝牙关联版本不兼容，请电脑和手机都使用 E30 测试包，再重新连接。';
+    return '蓝牙关联版本不兼容，请确认两端应用版本兼容后再连接。';
   }
   if (e.contains('rejected comparison code') ||
       e.contains('commitment mismatch')) {
     return '首次关联核对未通过，已拒绝建立可信会话。请在两端直接比较全部核对码，不一致时不要确认。';
   }
   if (e.contains('unsupported peripheral')) {
-    return '所选设备是系统外设，不能作为待连接手机。请完成手机配对后刷新列表。';
+    return '所选设备是系统外设，不能作为连接目标。请配对目标电脑后刷新列表。';
   }
   if (e.contains('service discovery') || e.contains('service_discovery')) {
     if (e.contains('consentrequired') || e.contains('0x80070005')) {
@@ -703,11 +762,11 @@ String friendlyBluetoothError(String raw) {
       return '系统报告蓝牙资源正被占用。请结束其他应用对此手机的蓝牙连接后重试，并保留原生日志。';
     }
     if (e.contains('devicenotconnected')) {
-      return '系统服务查询报告对端未连接。请保持手机邻跃前台等待，再重试；尚未进入身份认证。';
+      return '系统服务查询报告对端未连接。请保持对端邻跃前台等待，再重试；尚未进入身份认证。';
     }
     return e.contains('timeout')
-        ? '目标服务检查超时，请让手机邻跃保持“等待电脑连接”，再刷新或重试。'
-        : '未能确认手机的邻跃蓝牙服务。请确认已完成系统配对、手机已启动等待；键盘和鼠标不能作为目标。';
+        ? '目标服务检查超时，请确认对端邻跃保持等待连接，再刷新或重试。'
+        : '未能确认对端的邻跃蓝牙服务。请确认已完成系统配对、对端应用已启动等待；键盘和鼠标不能作为目标。';
   }
   if (e.contains('authentication timeout')) {
     return '身份验证超时，请确认手机保持亮屏，且两端选择了正确身份。';
@@ -731,7 +790,7 @@ String friendlyBluetoothError(String raw) {
     return '连接已断开，请确认对端应用仍在运行，再重新连接。';
   }
   if (e.contains('timeout') || e.contains('10060')) {
-    return '连接超时，请确认手机正在等待电脑连接，再重试。';
+    return '连接超时，请确认对端正在等待连接，再重试。';
   }
   if (e.contains('bond') || e.contains('os-paired')) {
     return '请先在系统蓝牙设置中将电脑和手机配对，再重试。';
@@ -739,5 +798,5 @@ String friendlyBluetoothError(String raw) {
   if (e.contains('10013')) {
     return '系统蓝牙安全连接被拒绝，请检查系统配对状态。';
   }
-  return '未能完成蓝牙连接，请确认手机已准备好后重试；详细原因可在诊断中查看。';
+  return '未能完成蓝牙连接，请确认对端已准备好后重试；详细原因可在诊断中查看。';
 }

@@ -37,6 +37,8 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> drag_out_channel_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> video_preview_channel_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> mini_chat_window_channel_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> network_discovery_channel_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> disk_capacity_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

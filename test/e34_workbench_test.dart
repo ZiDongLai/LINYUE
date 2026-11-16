@@ -244,11 +244,11 @@ void main() {
       ),
     );
     await tester.pumpWidget(bar(true));
-    await tester.tap(find.text('蓝牙 · 测试版'));
+    await tester.tap(find.text('蓝牙'));
     await tester.pump();
     expect(changed, 0);
     await tester.pumpWidget(bar(false));
-    await tester.tap(find.text('蓝牙 · 测试版'));
+    await tester.tap(find.text('蓝牙'));
     await tester.pump();
     expect(changed, 1);
     expect(
@@ -536,23 +536,21 @@ void main() {
         s.indexOf('  Future<void> _showConnectionMethods()'),
       );
       expect(controls.split('DeviceConnectionBar(').length - 1, 1);
-      expect(controls, contains('onRouteChanged:_selectWorkbenchRoute'));
+      expect(controls, contains('onRouteChanged: _selectWorkbenchRoute'));
       expect(controls.contains('ChoiceChip'), isFalse);
       final timeline = s.substring(
         s.indexOf('  Widget _mixedConversationItems('),
         s.indexOf('  Future<void> _sendTextTrial('),
       );
-      expect(
-        timeline,
-        contains('_conversationLiveBubble(bluetoothFileProgressInfo(p)'),
-      );
+      expect(timeline, contains('_conversationLiveBubble('));
+      expect(timeline, contains('bluetoothFileProgressInfo(p)'));
       expect(timeline.contains('SelectableText(\'SHA-256'), isFalse);
       final picker = s.substring(
         s.indexOf('  Future<void> _addWorkbenchFile()'),
         s.indexOf('  Widget _unifiedTextComposer('),
       );
-      expect(picker, contains('final bluetooth=_useBluetoothText;'));
-      expect(picker, contains('_workbenchFilePickerOpen=true'));
+      expect(picker, contains('final bluetooth = _useBluetoothText;'));
+      expect(picker, contains('_workbenchFilePickerOpen = true'));
       expect(
         picker.contains('catch'),
         isFalse,

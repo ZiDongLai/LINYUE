@@ -28,11 +28,16 @@ namespace linyue_bluetooth {
 namespace {
 using flutter::EncodableValue;
 using flutter::EncodableMap;
+using flutter::EncodableList;
 constexpr size_t kLimit = 65536;
 // c7941b72-4eb5-4a42-a164-25b100004672, same Android SDP UUID.
 const GUID kService = {0xc7941b72,0x4eb5,0x4a42,{0xa1,0x64,0x25,0xb1,0x00,0x00,0x46,0x72}};
 std::mutex mutex;
 std::thread worker;
+std::thread scan_worker;
+std::atomic<bool> scan_in_progress{false};
+std::vector<EncodableValue> scan_devices;
+std::string scan_error;
 std::atomic<bool> cancelled{true};
 SOCKET active_socket = INVALID_SOCKET;
 int32_t generation = 0;
@@ -203,11 +208,15 @@ std::string LocalName() {
   CloseHandle(radio); BluetoothFindRadioClose(find);
   return result==ERROR_SUCCESS ? Utf8(info.szName) : "";
 }
-flutter::EncodableList Devices(std::string* failure=nullptr, int* api_error=nullptr) {
+flutter::EncodableList Devices(std::string* failure=nullptr, int* api_error=nullptr,
+    bool issue_inquiry=false) {
   flutter::EncodableList list;
   BLUETOOTH_DEVICE_SEARCH_PARAMS params{};
   params.dwSize=sizeof(params); params.fReturnAuthenticated=TRUE;
-  params.fIssueInquiry=FALSE; // Only OS-paired devices, never discovery.
+  params.fReturnRemembered=TRUE;
+  params.fReturnUnknown=issue_inquiry ? TRUE : FALSE;
+  params.fIssueInquiry=issue_inquiry ? TRUE : FALSE;
+  params.cTimeoutMultiplier=2;
   BLUETOOTH_DEVICE_INFO device{}; device.dwSize=sizeof(device);
   const auto find = BluetoothFindFirstDevice(&params,&device);
   if (find == nullptr) {
@@ -217,10 +226,10 @@ flutter::EncodableList Devices(std::string* failure=nullptr, int* api_error=null
     return list;
   }
   do {
-    if (device.fAuthenticated) list.emplace_back(EncodableMap{
+    list.emplace_back(EncodableMap{
       {EncodableValue("id"),EncodableValue(Address(device.Address))},
       {EncodableValue("name"),EncodableValue(Utf8(device.szName))},
-      {EncodableValue("paired"),EncodableValue(true)},
+      {EncodableValue("paired"),EncodableValue(device.fAuthenticated != FALSE)},
       {EncodableValue("kind"),EncodableValue(std::string(((device.ulClassofDevice>>8)&0x1f)==2 ? "phone" :
         ((device.ulClassofDevice>>8)&0x1f)==5 ? "peripheral" : "other"))}});
   } while (BluetoothFindNextDevice(find,&device));
@@ -292,6 +301,123 @@ void Fail(const char* stage, int code) {
   state="error"; error=std::string(stage)+" (Windows error "+std::to_string(code)+")";
   TraceLocked(error);
 }
+void RunConnectedSocket(SOCKET sock, BTH_ADDR address) {
+  {
+    std::lock_guard<std::mutex> guard(mutex);
+    if (cancelled) {
+      if(active_socket==sock) active_socket=INVALID_SOCKET;
+      closesocket(sock);
+      return;
+    }
+    active_socket=sock;
+    state="connected";
+    BLUETOOTH_ADDRESS target{}; target.ullLong=address; peer_id=Address(target);
+    TraceLocked("secure RFCOMM connected; application authentication still required");
+  }
+  while (!cancelled) {
+    fd_set r,w; FD_ZERO(&r); FD_ZERO(&w); FD_SET(sock,&r);
+    { std::lock_guard<std::mutex> guard(mutex); if (!outgoing.empty()) FD_SET(sock,&w); }
+    timeval wait{0,50000};
+    const int n=select(0,&r,&w,nullptr,&wait);
+    if (cancelled) break;
+    if (n==SOCKET_ERROR) { Fail("RFCOMM select",WSAGetLastError()); break; }
+    if (FD_ISSET(sock,&r)) {
+      char buffer[4096]; const int count=recv(sock,buffer,sizeof(buffer),0);
+      if (count==0) { Fail("Peer disconnected",0); break; }
+      if (count<0) { if (WSAGetLastError()==WSAEWOULDBLOCK) continue; Fail("RFCOMM read",WSAGetLastError()); break; }
+      bool overflow=false;
+      { std::lock_guard<std::mutex> guard(mutex);
+        overflow=incoming.size()+static_cast<size_t>(count)>kLimit;
+        if (!overflow) incoming.insert(incoming.end(),buffer,buffer+count);
+      }
+      if (overflow) { Fail("Receive queue limit",WSAENOBUFS); break; }
+    }
+    if (FD_ISSET(sock,&w)) {
+      char buffer[4096]; int count=0;
+      { std::lock_guard<std::mutex> guard(mutex);
+        for (auto byte:outgoing) { buffer[count++]=static_cast<char>(byte); if (count==static_cast<int>(sizeof(buffer))) break; }
+      }
+      const int sent=send(sock,buffer,count,0);
+      if (sent<0) { if (WSAGetLastError()==WSAEWOULDBLOCK) continue; Fail("RFCOMM write",WSAGetLastError()); break; }
+      if (sent==0) { Fail("Zero-byte RFCOMM write",0); break; }
+      { std::lock_guard<std::mutex> guard(mutex); for (int i=0;i<sent;++i) outgoing.pop_front(); }
+    }
+  }
+  std::lock_guard<std::mutex> guard(mutex);
+  if (active_socket==sock) { closesocket(sock); active_socket=INVALID_SOCKET; }
+}
+
+bool SetBluetoothService(SOCKET listener, WSAESETSERVICEOP operation) {
+  SOCKADDR_BTH local{};
+  int length=sizeof(local);
+  if(getsockname(listener,reinterpret_cast<SOCKADDR*>(&local),&length)==SOCKET_ERROR) return false;
+  CSADDR_INFO endpoint{};
+  endpoint.LocalAddr.lpSockaddr=reinterpret_cast<LPSOCKADDR>(&local);
+  endpoint.LocalAddr.iSockaddrLength=sizeof(local);
+  endpoint.iSocketType=SOCK_STREAM;
+  endpoint.iProtocol=BTHPROTO_RFCOMM;
+  WSAQUERYSETW query{}; query.dwSize=sizeof(query);
+  query.lpszServiceInstanceName=const_cast<LPWSTR>(L"LINYUE");
+  query.lpServiceClassId=const_cast<GUID*>(&kService);
+  query.dwNameSpace=NS_BTH;
+  query.dwNumberOfCsAddrs=1;
+  query.lpcsaBuffer=&endpoint;
+  return WSASetServiceW(&query,operation,0)==0;
+}
+
+void RunServer() {
+  SOCKET listener=socket(AF_BTH,SOCK_STREAM,BTHPROTO_RFCOMM);
+  if(listener==INVALID_SOCKET) { Fail("RFCOMM server socket",WSAGetLastError()); return; }
+  u_long listener_nonblocking=1;
+  if(ioctlsocket(listener,FIONBIO,&listener_nonblocking)) {
+    Fail("RFCOMM server nonblocking mode",WSAGetLastError()); closesocket(listener); return;
+  }
+  { std::lock_guard<std::mutex> guard(mutex); if(cancelled) { closesocket(listener); return; } active_socket=listener; }
+  ULONG yes=TRUE;
+  if(setsockopt(listener,SOL_RFCOMM,SO_BTH_AUTHENTICATE,reinterpret_cast<const char*>(&yes),sizeof(yes)) ||
+     setsockopt(listener,SOL_RFCOMM,SO_BTH_ENCRYPT,reinterpret_cast<const char*>(&yes),sizeof(yes))) {
+    Fail("Secure RFCOMM server options",WSAGetLastError());
+    std::lock_guard<std::mutex> guard(mutex); if(active_socket==listener){closesocket(listener);active_socket=INVALID_SOCKET;} return;
+  }
+  SOCKADDR_BTH local{}; local.addressFamily=AF_BTH; local.serviceClassId=kService; local.port=BT_PORT_ANY;
+  if(bind(listener,reinterpret_cast<SOCKADDR*>(&local),sizeof(local))==SOCKET_ERROR ||
+     listen(listener,1)==SOCKET_ERROR) {
+    Fail("RFCOMM server bind/listen",WSAGetLastError());
+    std::lock_guard<std::mutex> guard(mutex); if(active_socket==listener){closesocket(listener);active_socket=INVALID_SOCKET;} return;
+  }
+  int local_size=sizeof(local);
+  if(getsockname(listener,reinterpret_cast<SOCKADDR*>(&local),&local_size)==SOCKET_ERROR) {
+    Fail("RFCOMM server channel",WSAGetLastError());
+    std::lock_guard<std::mutex> guard(mutex); if(active_socket==listener){closesocket(listener);active_socket=INVALID_SOCKET;} return;
+  }
+  if(!SetBluetoothService(listener,RNRSERVICE_REGISTER)) {
+    Fail("RFCOMM service registration",WSAGetLastError());
+    std::lock_guard<std::mutex> guard(mutex); if(active_socket==listener){closesocket(listener);active_socket=INVALID_SOCKET;} return;
+  }
+  { std::lock_guard<std::mutex> guard(mutex); if(!cancelled){state="listening";TraceLocked("RFCOMM service advertised; waiting for paired computer");} }
+  SOCKET accepted=INVALID_SOCKET; SOCKADDR_BTH remote{};
+  while(!cancelled && accepted==INVALID_SOCKET) {
+    fd_set reads; FD_ZERO(&reads); FD_SET(listener,&reads); timeval wait{0,100000};
+    const int ready=select(0,&reads,nullptr,nullptr,&wait);
+    if(ready==SOCKET_ERROR) { if(!cancelled) Fail("RFCOMM accept select",WSAGetLastError()); break; }
+    if(ready>0) { int remote_size=sizeof(remote); accepted=accept(listener,reinterpret_cast<SOCKADDR*>(&remote),&remote_size); if(accepted==INVALID_SOCKET && !cancelled) { Fail("RFCOMM accept",WSAGetLastError()); break; } }
+  }
+  SetBluetoothService(listener,RNRSERVICE_DELETE);
+  closesocket(listener);
+  if(accepted==INVALID_SOCKET) {
+    std::lock_guard<std::mutex> guard(mutex); if(active_socket==listener)active_socket=INVALID_SOCKET; return;
+  }
+  ULONG nonblocking=1;
+  if(ioctlsocket(accepted,FIONBIO,&nonblocking) ||
+     setsockopt(accepted,SOL_RFCOMM,SO_BTH_AUTHENTICATE,reinterpret_cast<const char*>(&yes),sizeof(yes)) ||
+     setsockopt(accepted,SOL_RFCOMM,SO_BTH_ENCRYPT,reinterpret_cast<const char*>(&yes),sizeof(yes))) {
+    Fail("Secure accepted RFCOMM socket",WSAGetLastError()); closesocket(accepted);
+    std::lock_guard<std::mutex> guard(mutex); if(active_socket==listener)active_socket=INVALID_SOCKET; return;
+  }
+  { std::lock_guard<std::mutex> guard(mutex); if(active_socket==listener)active_socket=accepted; }
+  RunConnectedSocket(accepted,remote.btAddr);
+}
+
 void Stop(const std::string& reason="unspecified") {
   cancelled=true;
   {
@@ -440,42 +566,7 @@ void Run(BTH_ADDR address) {
     }
   }
   if (!ready || cancelled) { Fail("RFCOMM connection timeout/cancel",WSAETIMEDOUT); cleanup(); return; }
-  { std::lock_guard<std::mutex> guard(mutex); if (!cancelled) {
-      state="connected";
-      TraceLocked("secure RFCOMM connected; application authentication still required");
-      BLUETOOTH_ADDRESS target{}; target.ullLong=address; peer_id=Address(target);
-    }
-  }
-  while (!cancelled) {
-    fd_set r,w; FD_ZERO(&r); FD_ZERO(&w); FD_SET(sock,&r);
-    { std::lock_guard<std::mutex> guard(mutex); if (!outgoing.empty()) FD_SET(sock,&w); }
-    timeval wait{0,50000};
-    const int n=select(0,&r,&w,nullptr,&wait);
-    if (cancelled) break;
-    if (n==SOCKET_ERROR) { Fail("RFCOMM select",WSAGetLastError()); break; }
-    if (FD_ISSET(sock,&r)) {
-      char buffer[4096]; const int count=recv(sock,buffer,sizeof(buffer),0);
-      if (count==0) { Fail("Peer disconnected",0); break; }
-      if (count<0) { if (WSAGetLastError()==WSAEWOULDBLOCK) continue; Fail("RFCOMM read",WSAGetLastError()); break; }
-      bool overflow=false;
-      { std::lock_guard<std::mutex> guard(mutex);
-        overflow=incoming.size()+static_cast<size_t>(count)>kLimit;
-        if (!overflow) incoming.insert(incoming.end(),buffer,buffer+count);
-      }
-      if (overflow) { Fail("Receive queue limit",WSAENOBUFS); break; }
-    }
-    if (FD_ISSET(sock,&w)) {
-      char buffer[4096]; int count=0;
-      { std::lock_guard<std::mutex> guard(mutex);
-        for (auto byte:outgoing) { buffer[count++]=static_cast<char>(byte); if (count==static_cast<int>(sizeof(buffer))) break; }
-      }
-      const int sent=send(sock,buffer,count,0);
-      if (sent<0) { if (WSAGetLastError()==WSAEWOULDBLOCK) continue; Fail("RFCOMM write",WSAGetLastError()); break; }
-      if (sent==0) { Fail("Zero-byte RFCOMM write",0); break; }
-      { std::lock_guard<std::mutex> guard(mutex); for (int i=0;i<sent;++i) outgoing.pop_front(); }
-    }
-  }
-  cleanup();
+  RunConnectedSocket(sock,address);
 }
 } // namespace
 
@@ -511,6 +602,26 @@ std::unique_ptr<flutter::MethodChannel<EncodableValue>> Register(flutter::Flutte
       else result->Success();
     } else if (call.method_name()=="diagnostics") {
       std::lock_guard<std::mutex> guard(mutex); result->Success(EncodableValue(DiagnosticsLocked()));
+    } else if (call.method_name()=="scanDevices") {
+      if (scan_in_progress.exchange(true)) { result->Success(); return; }
+      if (scan_worker.joinable()) scan_worker.join();
+      { std::lock_guard<std::mutex> guard(mutex); scan_devices.clear(); scan_error.clear(); TraceLocked("Bluetooth inquiry started; discovery results are not trusted identities"); }
+      scan_worker=std::thread([]() {
+        std::string failure; int api_error=0;
+        auto found=Devices(&failure,&api_error,true);
+        { std::lock_guard<std::mutex> guard(mutex);
+          scan_devices.assign(found.begin(),found.end()); scan_error=failure;
+          TraceLocked("Bluetooth inquiry completed; visible devices="+std::to_string(scan_devices.size())+" error="+std::to_string(api_error)); }
+        scan_in_progress=false;
+      });
+      result->Success();
+    } else if (call.method_name()=="scanStatus") {
+      std::lock_guard<std::mutex> guard(mutex);
+      result->Success(EncodableValue(EncodableMap{
+        {EncodableValue("scanning"),EncodableValue(scan_in_progress.load())},
+        {EncodableValue("devices"),EncodableValue(EncodableList(scan_devices.begin(),scan_devices.end()))},
+        {EncodableValue("error"),EncodableValue(scan_error)},
+        {EncodableValue("diagnostics"),EncodableValue(DiagnosticsLocked())}}));
     } else if (call.method_name()=="probeStatus") {
       std::lock_guard<std::mutex> guard(mutex);
       result->Success(EncodableValue(EncodableMap{
@@ -569,6 +680,15 @@ std::unique_ptr<flutter::MethodChannel<EncodableValue>> Register(flutter::Flutte
       { std::lock_guard<std::mutex> guard(mutex); cancelled=false; state="connecting"; gen=generation; }
       worker=std::thread(Run,address);
       result->Success(EncodableValue(gen));
+    } else if (call.method_name()=="start") {
+      { std::lock_guard<std::mutex> guard(mutex);
+        if(state=="connecting" || state=="connected" || state=="listening") { result->Error("BUSY","Bluetooth service already active"); return; }
+      }
+      Stop("native-before-listen");
+      int32_t gen;
+      { std::lock_guard<std::mutex> guard(mutex); cancelled=false; state="connecting"; gen=generation; }
+      worker=std::thread(RunServer);
+      result->Success(EncodableValue(gen));
     } else if (call.method_name()=="writeCapacity") {
       std::lock_guard<std::mutex> guard(mutex);
       result->Success(EncodableValue(EncodableMap{
@@ -594,6 +714,7 @@ std::unique_ptr<flutter::MethodChannel<EncodableValue>> Register(flutter::Flutte
 void Shutdown() {
   radio_cancelled=true;
   Stop("native-shutdown"); if (radio_worker.joinable()) radio_worker.join();
+  if (scan_worker.joinable()) scan_worker.join();
   if (winsock_ready) { WSACleanup(); winsock_ready=false; }
 }
 } // namespace linyue_bluetooth

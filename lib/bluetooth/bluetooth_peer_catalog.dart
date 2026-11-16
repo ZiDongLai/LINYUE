@@ -37,11 +37,13 @@ class PairedBluetoothDevice {
   const PairedBluetoothDevice({
     required this.id,
     required this.name,
+    this.paired = true,
     this.phone = false,
     this.fullAddress = false,
     this.peripheral = false,
   });
   final String id, name;
+  final bool paired;
   final bool phone;
   final bool fullAddress;
   final bool peripheral;
@@ -65,7 +67,6 @@ class BluetoothPeerCatalog {
           incomplete++;
           continue;
         }
-        if (entry['paired'] == false) continue;
         final id = canonicalBluetoothAddress(entry['id']);
         if (id == null) {
           incomplete++;
@@ -79,6 +80,7 @@ class BluetoothPeerCatalog {
         byId[id] = PairedBluetoothDevice(
           id: id,
           name: name == '未提供蓝牙名称' && previous != null ? previous.name : name,
+          paired: entry['paired'] != false || (previous?.paired ?? false),
           phone: entry['kind'] == 'phone' || (previous?.phone ?? false),
           peripheral:
               entry['kind'] == 'peripheral' || (previous?.peripheral ?? false),
@@ -87,6 +89,7 @@ class BluetoothPeerCatalog {
     }
     final devices = byId.values.toList()
       ..sort((a, b) {
+        if (a.paired != b.paired) return a.paired ? -1 : 1;
         if (a.phone != b.phone) return a.phone ? -1 : 1;
         final names = a.name.compareTo(b.name);
         return names != 0 ? names : a.id.compareTo(b.id);
@@ -101,6 +104,7 @@ class BluetoothPeerCatalog {
             ? PairedBluetoothDevice(
                 id: d.id,
                 name: d.name,
+                paired: d.paired,
                 phone: d.phone,
                 fullAddress: true,
                 peripheral: d.peripheral,

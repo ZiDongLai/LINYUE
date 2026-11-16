@@ -34,6 +34,7 @@ class BluetoothTransport extends ChangeNotifier {
   BluetoothTransport({
     required this.identity,
     required this.server,
+    bool? androidPlatform,
     BluetoothNative? native,
     this.textEnabled = false,
     this.filesEnabled = false,
@@ -41,9 +42,12 @@ class BluetoothTransport extends ChangeNotifier {
     this.pollInterval = const Duration(milliseconds: 100),
     this.filePollInterval = const Duration(milliseconds: 20),
     this.connectionTimeout = const Duration(seconds: 25),
-  }) : native = native ?? MethodChannelBluetoothNative();
+  }) : android = androidPlatform ?? server,
+       native = native ?? MethodChannelBluetoothNative();
   final DeviceIdentityManager identity;
-  final bool server;
+  final bool android;
+  bool server;
+  bool get _defaultServerRole => android;
   final bool textEnabled, filesEnabled, reverseFilesEnabled;
   BluetoothFileStore? fileStore;
   Future<bool> Function(BluetoothFileOffer)? approveFile;
@@ -292,18 +296,24 @@ class BluetoothTransport extends ChangeNotifier {
     }
   }
 
-  Future<void> start({required String expectedFingerprint, String? deviceId}) {
+  Future<void> start({
+    required String expectedFingerprint,
+    String? deviceId,
+    bool? serverRole,
+  }) {
     // Reserve synchronously, before the first platform await.
     if (_disposed || active) {
       throw StateError('Bluetooth operation already active/disposed');
     }
-    final target = server ? null : canonicalBluetoothAddress(deviceId);
-    if (!server && target == null) {
+    final role = serverRole ?? server;
+    final target = role ? null : canonicalBluetoothAddress(deviceId);
+    if (!role && target == null) {
       throw StateError(
         'Target device ID missing or invalid before native start',
       );
     }
     _starting = true;
+    server = role;
     final epoch = ++_epoch; // Reserve before queueing so immediate cancel wins.
     return _control(() async {
       try {
@@ -325,8 +335,8 @@ class BluetoothTransport extends ChangeNotifier {
         state = 'connecting';
         connectedDeviceId = null;
         _generation = await native.invoke<int>(
-          server ? 'start' : 'connect',
-          server ? null : {'id': target},
+          role ? 'start' : 'connect',
+          role ? null : {'id': target},
         );
         if (_disposed || epoch != _epoch) {
           if (_disconnecting == null) {
@@ -340,7 +350,7 @@ class BluetoothTransport extends ChangeNotifier {
           throw StateError('No native connection generation');
         }
         _event(
-          'RFCOMM ${server ? 'server registration requested' : 'client connecting'}; UUID=$bluetoothServiceUuid',
+          'RFCOMM ${role ? 'server registration requested' : 'client connecting'}; UUID=$bluetoothServiceUuid',
         );
         if (!server) {
           _connectDeadline = Timer(connectionTimeout, () {
@@ -415,7 +425,7 @@ class BluetoothTransport extends ChangeNotifier {
             server: server,
             identity: identity,
             localName: localName.isEmpty
-                ? (server ? 'Android · 邻跃' : 'Windows · 邻跃')
+                ? (android ? 'Android · 邻跃' : 'Windows · 邻跃')
                 : localName,
             expectedFingerprint: expected.isEmpty ? null : expected,
             write: (bytes) async {
@@ -621,6 +631,7 @@ class BluetoothTransport extends ChangeNotifier {
     }
     _generation = null;
     connectedDeviceId = null;
+    server = _defaultServerRole;
     _stopping = false;
     _event(reason ?? 'RFCOMM stopped; pending frames cleared');
   }

@@ -1,14 +1,19 @@
 # Project-level configuration.
-cmake_minimum_required(VERSION 3.14)
-project(nearlink LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.15)
+cmake_policy(SET CMP0091 NEW)
+project(linyue LANGUAGES CXX)
+
+# Keep Debug behavior (including the experimental Bluetooth code) without
+# linking the non-redistributable MSVC debug CRT on users' computers.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "nearlink")
+set(BINARY_NAME "linyue")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
-cmake_policy(VERSION 3.14...3.25)
+cmake_policy(VERSION 3.15...3.25)
 
 # Define build configuration option.
 get_property(IS_MULTICONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
@@ -40,9 +45,12 @@ add_definitions(-DUNICODE -D_UNICODE)
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_17)
   target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
+  # Flutter's Debug configuration defines _DEBUG, which selects the
+  # non-redistributable MSVC debug STL/CRT (MSVCP140D.dll). Keep the Debug
+  # build mode and its feature gates, but use the deployable runtime.
+  target_compile_options(${TARGET} PRIVATE "$<$<CONFIG:Debug>:/U_DEBUG>")
   target_compile_options(${TARGET} PRIVATE /EHsc)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
-  target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")
 endfunction()
 
 # Flutter library and tool build rules.
@@ -68,6 +76,14 @@ set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
 endif()
+
+# This is a portable folder distribution, so place the release CRT next to the
+# executable instead of requiring a separately installed VC++ runtime. The
+# install prefix is a generator expression for Visual Studio's per-configuration
+# output directory; pass that directory directly because the runtime module's
+# relative destinations would otherwise leave the expression unevaluated.
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION "${BUILD_BUNDLE_DIR}")
+include(InstallRequiredSystemLibraries)
 
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")

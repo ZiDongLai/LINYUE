@@ -32,7 +32,9 @@ void main() {
     expect(miniShell, contains('onPressed: _restoreWindowsMainChat'));
     expect(miniShell, contains("'取消置顶' : '窗口置顶'"));
     expect(miniShell, contains("tooltip: '返回完整窗口'"));
-    expect(miniShell, contains('BoxConstraints.tightFor(width: 35, height: 34)'));
+    expect(miniShell, contains('BoxConstraints.tightFor('));
+    expect(miniShell, contains('width: 35'));
+    expect(miniShell, contains('height: 34'));
   });
 
   test('the shared conversation and composer remain in mini mode', () {

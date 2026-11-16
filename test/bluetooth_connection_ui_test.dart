@@ -15,6 +15,7 @@ class WorkflowNative implements BluetoothNative {
   bool permission = true, radio = true, available = true;
   String radioState = 'on';
   bool grantOnRequest = false, statusFails = false;
+  List<Map<String, dynamic>> discovered = [];
   int permissionRequests = 0;
   int serviceQueries = 0, settingsRequests = 0, nativeStops = 0;
   String serviceOutcome = 'ready';
@@ -38,6 +39,13 @@ class WorkflowNative implements BluetoothNative {
       };
     }
     if (method == 'radioStatus') result = radioState;
+    if (method == 'scanDevices') result = null;
+    if (method == 'scanStatus') {
+      result = {
+        'scanning': false,
+        'devices': [...paired, ...discovered],
+      };
+    }
     if (method == 'permission') {
       permissionRequests++;
       if (grantOnRequest) permission = true;
@@ -75,6 +83,7 @@ class WorkflowTransport extends BluetoothTransport {
   Future<void> start({
     required String expectedFingerprint,
     String? deviceId,
+    bool? serverRole,
   }) async {
     if (active) throw StateError('Already active');
     starts++;
@@ -83,6 +92,7 @@ class WorkflowTransport extends BluetoothTransport {
     if (failStart) {
       throw StateError('RFCOMM connect/service (Windows error 10060)');
     }
+    server = serverRole ?? server;
     state = server ? 'listening' : 'connecting';
     lastError = '';
     notifyListeners();
@@ -410,7 +420,7 @@ void main() {
         addTearDown(s.controller.dispose);
         await tester.pumpWidget(testHome(s));
         expect(find.byKey(const Key('connect-device')), findsOneWidget);
-        expect(find.textContaining('蓝牙 · 测试版'), findsOneWidget);
+        expect(find.text('蓝牙'), findsOneWidget);
         await tester.tap(find.byKey(const Key('connect-device')));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('lan-connection-option')), findsOneWidget);
@@ -454,7 +464,12 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 50));
         expect(s.transport.starts, 1);
-        expect(tester.widget<Text>(find.byKey(const Key('bluetooth-sheet-status'))).data, '等待电脑连接');
+        expect(
+          tester
+              .widget<Text>(find.byKey(const Key('bluetooth-sheet-status')))
+              .data,
+          '等待电脑连接',
+        );
         expect(find.textContaining('UUID:'), findsNothing);
         expect(find.textContaining('服务端'), findsNothing);
         await tester.tap(find.byKey(const Key('return-chat')));
@@ -499,7 +514,12 @@ void main() {
         expect(find.byKey(const Key('bluetooth-cancel')), findsOneWidget);
         await tester.tap(find.byKey(const Key('bluetooth-cancel')));
         await tester.pumpAndSettle();
-        expect(tester.widget<Text>(find.byKey(const Key('bluetooth-sheet-status'))).data, '已取消蓝牙连接');
+        expect(
+          tester
+              .widget<Text>(find.byKey(const Key('bluetooth-sheet-status')))
+              .data,
+          '已取消蓝牙连接',
+        );
       },
     );
     testWidgets(
@@ -535,7 +555,12 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
       await tester.pumpAndSettle();
-      expect(tester.widget<Text>(find.byKey(const Key('bluetooth-sheet-status'))).data, '蓝牙权限未授予');
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('bluetooth-sheet-status')))
+            .data,
+        '蓝牙权限未授予',
+      );
       expect(tester.takeException(), isNull);
     });
   });
@@ -553,12 +578,9 @@ void main() {
       );
       expect(desktop, contains('_connectionControls()'));
       expect(mobile, contains('_connectionControls()'));
-      expect(
-        main,
-        contains(
-          "if(!_useBluetoothText) { await _showDeviceManager(); return; }",
-        ),
-      );
+      expect(main, contains('if (!_useBluetoothText) {'));
+      expect(main, contains('await _showDeviceManager();'));
+      expect(main, contains("result = await showDialog<String>("));
       expect(
         main,
         contains(

@@ -255,7 +255,7 @@ void main() {
         {'id': 'AABBCC7EAD91', 'name': 'Keyboard K380', 'kind': 'peripheral'},
       ];
       await open(t, s);
-      expect(find.textContaining('这里只显示已配对设备'), findsOneWidget);
+      expect(find.textContaining('搜索结果包含附近设备'), findsOneWidget);
       expect(find.byKey(const Key('bluetooth-settings')), findsOneWidget);
       expect(find.byKey(const ValueKey('paired-AABBCC7EAD91')), findsNothing);
       s.native.paired = [
@@ -311,7 +311,9 @@ void main() {
         contains('operation.Cancel()'),
       );
       expect(cpp, contains('WaitForBluetoothOperation'));
-      expect(cpp, contains('fIssueInquiry=FALSE'));
+      expect(cpp, contains('fIssueInquiry=issue_inquiry ? TRUE : FALSE'));
+      expect(cpp, contains('fReturnUnknown=issue_inquiry ? TRUE : FALSE'));
+      expect(cpp, contains('fReturnRemembered=TRUE'));
       expect(kotlin, contains('listenUsingRfcommWithServiceRecord'));
       expect(kotlin, contains('c7941b72-4eb5-4a42-a164-25b100004672'));
       expect(kotlin, contains('Settings.ACTION_BLUETOOTH_SETTINGS'));

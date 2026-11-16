@@ -8,6 +8,8 @@ project(runner LANGUAGES CXX)
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
+  "disk_capacity_channel.cpp"
+  "network_discovery.cpp"
   "$<$<CONFIG:Debug>:bluetooth_poc.cpp>"
   "main.cpp"
   "utils.cpp"
@@ -24,6 +26,7 @@ apply_standard_settings(${BINARY_NAME})
 target_compile_features(${BINARY_NAME} PRIVATE "$<$<CONFIG:Debug>:cxx_std_20>")
 
 # Add preprocessor definitions for the build version.
+target_compile_definitions(${BINARY_NAME} PRIVATE "$<$<CONFIG:Debug>:LINYUE_DEBUG>")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION=\"${FLUTTER_VERSION}\"")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MAJOR=${FLUTTER_VERSION_MAJOR}")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MINOR=${FLUTTER_VERSION_MINOR}")
@@ -37,6 +40,7 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "iphlpapi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "$<$<CONFIG:Debug>:ws2_32.lib>" "$<$<CONFIG:Debug>:Bthprops.lib>" "$<$<CONFIG:Debug>:windowsapp.lib>")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 

@@ -249,10 +249,10 @@ void main() {
       expect(send, contains('textReady'));
       expect(send, contains('bluetooth: true'));
       expect(send, isNot(contains('peer.ip')));
-      expect(main, contains('onRouteChanged:_selectWorkbenchRoute'));
+      expect(main, contains('onRouteChanged: _selectWorkbenchRoute'));
       expect(
         main,
-        contains('_bluetoothConnection?.transport.fileSendReady==true'),
+        contains('fileSendReady == true'),
       );
       expect(
         main,

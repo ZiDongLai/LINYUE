@@ -7,7 +7,8 @@ void main() {
   test('manager returns selected intent after dialog dismissal', () {
     final source = File('lib/main.dart').readAsStringSync();
     expect(source, contains('await showDialog<_DeviceManagerSelection>('));
-    expect(source, contains("_DeviceManagerSelection(action: action,"));
+    expect(source, contains('_DeviceManagerSelection('));
+    expect(source, contains('action: action,'));
     expect(source, contains("if (selected.action == 'reconnect')"));
     expect(source, contains('await _reconnectManagedPeer(peer);'));
   });

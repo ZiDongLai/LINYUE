@@ -115,13 +115,12 @@ void main() {
         expect(c.devices.first.phone, isTrue);
       },
     );
-    test('unpaired rows are not offered for connection', () {
-      expect(
-        BluetoothPeerCatalog.fromSnapshot([
-          {'id': '112233445566', 'name': '未配对', 'paired': false},
-        ]).devices,
-        isEmpty,
-      );
+    test('unpaired discovered rows are visible but remain marked unpaired', () {
+      final catalog = BluetoothPeerCatalog.fromSnapshot([
+        {'id': '112233445566', 'name': '附近电脑', 'paired': false},
+      ]);
+      expect(catalog.devices.single.name, '附近电脑');
+      expect(catalog.devices.single.paired, isFalse);
     });
     test('blank duplicate name cannot erase an available friendly name', () {
       final c = BluetoothPeerCatalog.fromSnapshot([

@@ -2,6 +2,8 @@
 #include "received_drag_out.h"
 #include "video_frame_preview.h"
 #include "mini_chat_window_control.h"
+#include "network_discovery.h"
+#include "disk_capacity_channel.h"
 #ifndef NDEBUG
 #include "bluetooth_poc.h"
 #include "bluetooth_file_channel.h"
@@ -32,6 +34,9 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  disk_capacity_channel_ =
+      RegisterDiskCapacityChannel(flutter_controller_->engine());
+  network_discovery_channel_ = RegisterNetworkDiscovery(flutter_controller_->engine());
 #ifndef NDEBUG
   bluetooth_poc_channel_ = linyue_bluetooth::Register(flutter_controller_->engine());
   bluetooth_file_channel_ = linyue_bt_file::RegisterFiles(flutter_controller_->engine()->messenger());
@@ -62,6 +67,8 @@ void FlutterWindow::OnDestroy() {
   linyue_video_preview::Shutdown();
   video_preview_channel_.reset();
   mini_chat_window_channel_.reset();
+  disk_capacity_channel_.reset();
+  network_discovery_channel_.reset();
   drag_out_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;

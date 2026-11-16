@@ -59,7 +59,8 @@ void main() {
       expect(src, contains("'发现诊断：启动至首次发现"));
       expect(src, contains("_emitDiscoveryTrace('首次设备 UDP 广播')"));
       expect(src, contains("_emitDiscoveryTrace('首次设备 TCP 健康探测')"));
-      expect(src, contains('for (final timer in _discoveryTraceTimers) { timer.cancel(); }'));
+      expect(src, contains('for (final timer in _discoveryTraceTimers) {'));
+      expect(src, contains('timer.cancel();'));
       expect(src, isNot(contains('permissionToTransfer = true')));
     });
   });
