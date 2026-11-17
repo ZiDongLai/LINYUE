@@ -103,6 +103,7 @@ class MainActivity : FlutterActivity() {
             bluetoothPoc = BluetoothPocBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         }
         NativeVideoFrameBridge.register(this, flutterEngine)
+        NetworkDiscoveryBridge.register(flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {

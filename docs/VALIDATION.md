@@ -79,3 +79,17 @@
 | 完整 ZIP | 28 项；必需 EXE、资源和安装说明齐全，无 PDB；归档读取校验通过 |
 
 当前 Windows 完整包：`dist/linyue_windows_v0.5.67_20261116.zip`。SHA-256：`8DCB0E7F67CA7A18CE54E487FD9EFC86C353E00B83C9ABB47E2A111D96062136`。该完整包仅保存在本地 `dist/` 目录，没有纳入 GitHub 源码仓库。Android APK 与 GitHub Release 未重建或替换；仍需用户在目标电脑运行此版本验证实际大文件传输。
+
+## 2026-11-16 Android 局域网搜索更新 v0.5.68+52
+
+| 验证 | 结果 |
+|---|---|
+| Flutter 全量测试 | 1034 项通过，0 失败 |
+| Android 局域网接口定向测试 | 3 项通过；仅接受原生 IPv4 接口和前缀，公网、过宽子网及无效数据不会进入探测 |
+| 修改模块 Dart 分析 | 0 warning/error；7 条既有 style info |
+| Android Debug 构建 | 成功；包名 `com.nearlink.nearlink`，versionCode `52`，versionName `0.5.68` |
+| APK 架构 | `arm64-v8a`、`armeabi-v7a`、`x86_64` |
+| APK 签名 | Android Debug 签名，APK Signature Scheme v2；不是原 v0.5.64 签名的确认副本 |
+| Android 真机安装与传输 | 未完成；当前未连接 Android 设备 |
+
+本地 APK：`dist/linyue_android_v0.5.68_20261116_debug.apk`。SHA-256：`CB504A313824BF6C24A8564877E265B70C4094F881DB235F146B8F703697594D`。APK 未纳入 GitHub 源码仓库；提交包含对应源码、测试和安装说明。由于未找到原版 v0.5.64 调试签名，不能保证覆盖更新，安装器提示签名冲突时应保留旧应用及数据。

@@ -77,7 +77,7 @@ class DiskCapacityGuard {
           : '${error.code}: $message';
       return _DiskSpaceProbe(null, detail);
     } on MissingPluginException {
-      return const _DiskSpaceProbe(null, 'Windows 磁盘查询通道未加载');
+      return const _DiskSpaceProbe(null, '磁盘空间查询组件未加载');
     } catch (error) {
       // Plugin absent, inaccessible volume or filesystem error.
       return _DiskSpaceProbe(null, error.runtimeType.toString());

@@ -189,7 +189,7 @@ class LinYueApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '邻跃 LINYUE · v0.5.65 DEV13D2E38',
+      title: '邻跃 LINYUE · v0.5.68',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -6261,7 +6261,7 @@ class _TransferHomeState extends State<TransferHome> {
         children: [
           const SizedBox(width: 4),
           Text(
-            '邻跃 LINYUE · v0.5.65 DEV13D2E38',
+            '邻跃 LINYUE · v0.5.68',
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
               color: const Color(0xFFB4C9CA),
               fontSize: 11,
@@ -7821,7 +7821,7 @@ class _TransferHomeState extends State<TransferHome> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _infoLine('版本', '邻跃 LINYUE v0.5.65 DEV13D2E38'),
+              _infoLine('版本', '邻跃 LINYUE v0.5.68'),
               const SizedBox(height: 10),
               _infoLine('设备名称', service.deviceName),
               const SizedBox(height: 10),
@@ -8081,7 +8081,7 @@ class _TransferHomeState extends State<TransferHome> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _infoLine('版本', 'v0.5.65 DEV13D2E38'),
+              _infoLine('版本', 'v0.5.68'),
               const SizedBox(height: 10),
               _infoLine('设备名称', service.deviceName),
               const SizedBox(height: 10),

@@ -6,11 +6,11 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'peer_presence.dart';
 import 'discovery_warmup_policy.dart';
 import 'discovery_active_probe_policy.dart';
+import 'lan_interface_provider.dart';
 import 'discovery_latency_trace.dart';
 import 'discovery_probe_batch.dart';
 import 'discovery_packet_diagnostics.dart';
@@ -104,7 +104,7 @@ class NearLinkService extends ChangeNotifier {
     this.allowLegacyFileTransfer = false,
     Future<List<LanInterfaceSnapshot>> Function()? lanInterfaceProvider,
   }) : deviceId = randomHex(12),
-       _lanInterfaceProvider = lanInterfaceProvider ?? _loadLanInterfaces;
+       _lanInterfaceProvider = lanInterfaceProvider ?? loadLanInterfaces;
 
   final String deviceName;
   final bool allowLegacyFileTransfer;
@@ -691,23 +691,6 @@ class NearLinkService extends ChangeNotifier {
       scanner.close(force: true);
       _subnetProbeInProgress = false;
     }
-  }
-
-  static Future<List<LanInterfaceSnapshot>> _loadLanInterfaces() async {
-    if (!Platform.isWindows) return const [];
-    final rows = await const MethodChannel(
-      'nearlink/network_discovery',
-    ).invokeListMethod<Object?>('getInterfaces');
-    return [
-      for (final row in rows ?? const <Object?>[])
-        if (row is Map &&
-            row['address'] is String &&
-            row['prefixLength'] is int)
-          LanInterfaceSnapshot(
-            address: row['address'] as String,
-            prefixLength: row['prefixLength'] as int,
-          ),
-    ];
   }
 
   void _scheduleManualHealthProbe() {
